@@ -1,0 +1,580 @@
+<html style="width:100%; height:100%">
+<head>
+	<title>BICY</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	
+	<link  rel="stylesheet" href="css/jquery-ui.css" type="text/css" />
+	<link rel="stylesheet" href="css/leaflet.css" type="text/css" />
+	<link rel="stylesheet" href="css/master.css" type="text/css" />
+	<link rel="stylesheet" href="css/bicy.css" type="text/css" />
+	
+	<!-- script type="text/javascript" src="js/google_maps_api_32_withsensor.js"></script -->
+	<script src="http://maps.google.com/maps/api/js?v=3.2&sensor=true"></script>
+	<script type="text/javascript" src="js/jquery-last.js"></script>
+	<script type="text/javascript" src="js/jquery-ui.min.js"></script>
+	<script type="text/javascript" src="js/leaflet.js"></script>
+	<script type="text/javascript" src="js/Google.js"></script>
+	<script type="text/javascript" src="js/main.js"></script>
+	<script type="text/javascript" src="js/geoFunction.js"></script>
+	<script type="text/javascript" src="js/cordova-2.0.0.js"></script>
+	
+
+</head>
+
+<body>
+<div id="page">
+	<ul>
+		<li><a href="#karta">Karta</a></li>
+		<li><a href="#poti">Poti</a></li>
+		<li><a href="#podrobnosti" id="podrobnosti_title">Opis</a></li>
+		<li><a href="#logos">BICY</a></li>
+	</ul>
+
+<div id="karta">
+	<div id="map" class="page_content"></div><div id="map_data"></div>
+</div>
+<div id='poti'></div>
+<div id='podrobnosti'></div>
+<div id='logos'></div>
+
+</div> <!-- page -->
+	
+
+<script type='text/javascript'>
+
+if(!Array.prototype.last) {
+    Array.prototype.last = function() {
+        return this[this.length - 1];
+    }
+}
+
+Number.prototype.toRad = function() {
+   return this * Math.PI / 180;
+}
+
+Number.prototype.toDeg = function() {
+   return this * 180 / Math.PI;
+}
+
+
+function azimuth(point1, point2) {
+  var lat1 = point1.latitude.toRad(), lat2 = point2.lat.toRad();
+  var dLon = (point2.lng-point1.longitude).toRad();
+
+  var y = Math.sin(dLon) * Math.cos(lat2);
+  var x = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLon);
+  var brng = Math.atan2(y, x);
+  
+  return (brng.toDeg()+360) % 360;
+}
+
+function reset_arrow() {
+    if(marker_arrow) {
+    	marker_arrow._reset();
+    }
+}
+
+var map = new L.Map('map', {center: new L.LatLng(45.545, 13.734), zoom: 13, zoomAnimation: true, fadeAnimation: true, attributionControl: false, zoomControl: false});
+
+map.on('zoomend', function() { reset_arrow(); } );
+map.on('move', function() { reset_arrow(); } );
+map.on('load', function() { reset_arrow(); } );
+		
+var linija;
+var linija_podatki;
+var linija_pot;
+var near_ll;
+
+var rt_data;
+
+var gps;
+var marker, marker_circle, marker_arrow, poimarker;
+var selected_tab = 0;
+var where2pan;
+
+var follow=true;
+var firstmarker;
+var midmarker;
+var lastmarker;
+var indexZ=1000;
+
+function onEachFeature(e, layer) {
+    var popupContent = "Oznaka:";
+    if (e.properties && e.properties.oznaka) {
+        popupContent += "<b>" + e.properties.oznaka + "</b>";
+    }
+    if (e.properties && e.properties.dolzina) {
+    	//var dolzina=parseInt(e.properties.dolz);
+    	//dolzina=dolzina/1000;
+        popupContent += "<br />Dolžina: <b>" + e.properties.dolzina + "</b>";
+    }   
+    
+    if (e.properties && e.properties.potek) {
+        popupContent += "<br /><br />" + e.properties.potek + "";
+    }
+
+    layer.bindPopup(popupContent);
+    if (e.properties && e.properties.barva && layer.setStyle) {
+    	var style = myStyle();
+    	style.color = "#"+e.properties.barva;
+        layer.setStyle(style);
+    }
+}
+
+function onEachPOI(e, layer) {
+
+    var popupContent = "";
+    if (e.properties && e.properties.ime) {
+        popupContent += "<b>" + e.properties.ime + "</b>";
+    }
+    if (e.properties && e.properties.naziv) {
+        popupContent += " - " + e.properties.naziv;
+    }
+    if (e.properties && e.properties.ulica) {
+        popupContent += "<br /><i>" + e.properties.ulica + "</i>";
+    }   
+    
+    layer.bindPopup(popupContent);
+    
+}
+		
+function drawJSON(){
+
+   jQuery.getJSON('http://picws.harphasea.si/dbget?db=web_apps,rrc,kolesarske_poti_e', function(data) {
+	var myLayer = L.geoJson(data, { style:myStyle,onEachFeature: onEachFeature}).addTo(map);
+	
+	var items = [];
+	jQuery.each(data.features, function (key, val) {
+		id=val.properties["id"];
+		ozn = val.properties["oznaka"];
+		ime = val.properties["ime_poti"];
+		items.push('<li id="item_' + id + '" class="item" onclick="oneElementJSON('+id+')"><b>' + ozn + ' - ' + ime + '</b><div class="pot_data"><span class="item_data">'+val.properties["dolzina"]+'</span><span class="item_data">' + val.properties["zahtevnost"] + '</span><span class="item_data">' + val.properties["potek"] + '</span></div></li>');
+	});	
+	var element = jQuery('<ul id="linije_list"/>');
+ 	element.addClass('lista').addClass('page_content').html(items.join(''));
+ 	element.appendTo('#poti');
+
+   });
+}
+   
+   
+function drawPoi(){  
+ 
+   jQuery.getJSON('http://picws.harphasea.si/dbget?db=web_apps,rrc,poi_e', function(data) {
+	var poi = L.geoJson(data, { onEachFeature: onEachPOI, pointToLayer: function (feature, latlng) {
+	
+	var tip=feature.properties.tip;
+	if(tip=="10"){
+		 poimarker= new L.Marker(latlng, {icon:infoIcon});
+	}
+	else if(tip=="21" || tip=="23" || tip=="26" ||tip=="27"){
+		 poimarker= new L.Marker(latlng, {icon:barIcon});
+	}
+	
+	else if(tip=="25"){
+		 poimarker= new L.Marker(latlng, {icon:iceIcon});
+	}
+	
+	else if(tip=="31" || tip=="32"){
+		 poimarker= new L.Marker(latlng, {icon:museumIcon});
+	}
+	
+	else if(tip=="44"){
+		 poimarker= new L.Marker(latlng, {icon:epointIcon});
+	}
+	else if(tip=="48"){
+		 poimarker= new L.Marker(latlng, {icon:epointIcon});
+	}
+	else if(tip=="53"){
+		 poimarker= new L.Marker(latlng, {icon:gasIcon});
+	}
+	
+	else{
+        poimarker= new L.Marker(latlng); 
+        }
+        return poimarker;
+        
+    }}).addTo(map);
+
+   });
+  
+}
+
+function pan2( point, zoom ) {
+	where2pan = point;
+	
+	//if(selected_tab == 0) {
+		if(zoom && zoom > 0){
+			//map.setView( where2pan, zoom, true );
+			map.setZoom(zoom);
+			setTimeout(function() {map.panTo(where2pan);}, 100);
+			setTimeout(function() {map.setView( where2pan, zoom, true );}, 100);
+			
+		}
+		else
+			setTimeout(function() {map.panTo( where2pan );}, 100);
+	//}
+		
+}
+
+
+function oneElementJSON(el){
+
+	if(linija) {
+		jQuery("#item_"+linija).removeClass("selected_item");
+		jQuery("#item_"+linija+" .pot_data").hide("slow");
+		follow=false; 
+	}
+	linija= el;
+	jQuery("#item_"+linija+" .pot_data").show("slow");
+	jQuery("#item_"+linija).addClass("selected_item");
+	
+	var podatki = jQuery.getJSON('http://picws.harphasea.si/dbget?db=web_apps,rrc,kolesarske_poti_e,id=\''+linija+'\'&nocache=1', function(data) {
+	
+		var elements = [];
+		jQuery.each(data.features, function (key, val) {
+	
+			elements.push('<div id="podrobnosti_vsebina"><h2>'+val.properties["oznaka"] + ' - ' + val.properties["ime_poti"]+'</h2>');
+			if(val.properties["potek"]!="None"){elements.push('<p><h3>Potek poti</h3>'+val.properties["potek"]+'</p>');}
+			if(val.properties["dolzina"]!="None"){elements.push('<p><h3>Dolžina poti</h3>'+val.properties["dolzina"]+'</p>');}
+			if(val.properties["izhodisce"]!="None"){elements.push('<p><h3>Izhodišče</h3>'+val.properties["izhodisce"]+'</p>');}
+			if(val.properties["podlaga"]!="None"){elements.push('<p><h3>Podlaga</h3>'+val.properties["podlaga"]+'</p>');}	
+			if(val.properties["zahtevnost"]!="None"){elements.push('<p><h3>Zahtevnost</h3>'+val.properties["zahtevnost"]+'</p>');}
+			if(val.properties["visina"]!="None"){elements.push('<p><h3>Višina poti</h3>'+val.properties["visina"]+'</p>');}
+			if(val.properties["opis"]!="None"){elements.push('<p><h3>Opis</h3>'+val.properties["opis"]+'</p>');}
+			if(val.properties["spletna_stran"]!="None"){elements.push('<p><h3>Povezava</h3><a href=\"'+val.properties["spletna_stran"]+'\">MOK-'+val.properties["oznaka"]+'</a></p>');}
+			elements.push('</div>');
+				
+	        linija_podatki = val.properties;
+	        linija_pot = val.geometry.coordinates;
+	        
+/*	        //bounding box
+	        var linija_bb=linija_podatki.box2d;
+	        linija_bb_arr=linija_bb.substring(4, linija_bb.length - 1).split(",");
+	        linija_bb_arr[0]=linija_bb_arr[0].split(" ");
+	        linija_bb_arr[1]=linija_bb_arr[1].split(" ");
+*/		    
+	        pan2( new L.LatLng(val.properties["center_y"], val.properties["center_x"]), 13 );
+
+		});	
+		var element = jQuery('</p>');
+		element.addClass('lista').addClass('page_content').html(elements.join(''));
+
+		// pobrisemo star div
+		jQuery('#podrobnosti').html('');
+		// in mu dodamo novo vsebino
+		element.appendTo('#podrobnosti');
+		if(linija_podatki)
+			jQuery("#podrobnosti_title").html("Opis "+linija_podatki['oznaka']);
+			
+		distanceJSON(gps,linija);
+		updateMapData();
+	});
+
+}
+
+function setLogos(){
+
+	var t='';
+	t += '<div id="logos">';
+	t +='<span class="line" >Mobilna aplikacija za Android je bila pripravljena za projekt BICY v okviru programa Srednja Evropa, ki je sofinanciran s strani Evropskega sklada za regionalni razvoj.</br>This project is implemented through the CENTRAL EUROPE Programme co-financed by the ERDF.</span></br></br>';
+	t += '<span class="line"><img src="images/logos/bicy1.jpg" alt="rrc">';
+	t += '&nbsp;&nbsp;&nbsp;&nbsp;<img src="images/logos/bicy3.jpg" alt="bicy"></br></br>';
+	t += '<img src="images/logos/bicy2.jpg" alt="eu">';
+	t +='</span></br></br>';
+	
+	//t += '<span class="line"><img src="images/logos/hs.png" alt="hs"></br>©2012 Harpha Sea, d.o.o. Koper</span>';
+	t += '<span class="line">Verzija 1.0 (oktober 2012)</br>©2012 Harpha Sea, d.o.o. Koper</span>';
+	t += '</div>';
+	
+
+	jQuery("#logos").html(t);
+
+}
+
+function updateMapData() {
+	var o='';
+	
+	if(linija_podatki && gps ) {
+	
+		o += '<div id="gps_lens">';
+		//if(parseInt(linija_podatki.mid_dist)<1000){
+			o += '<span class="line" id="start_line"><span class="label"><img src="images/start.png" alt="sp"></span><span class="labled_data" align="absmiddle">'+parseInt(linija_podatki.first_dist)+'m</span><span class="labled_data"> +'+parseInt(linija_podatki.fu)+'</span><span class="labled_data">/-'+parseInt(linija_podatki.fd)+'m </span>';
+			o += '</span><span class="line" id="end_line"><span class="label"><img src="images/end.png" alt="sp"></span><span class="labled_data">'+parseInt(linija_podatki.last_dist)+'m </span><span class="labled_data"> +'+parseInt(linija_podatki.lu)+'</span><span class="labled_data">/-'+parseInt(linija_podatki.ld)+'m </span></span>';
+
+		//}
+		o += '<span class="line" id="near_line"><span class="label"><img src="images/mid.png" alt="sp"></span><span class="labled_data">'+parseInt(linija_podatki.mid_dist)+'m </span><span class="labled_data">'+((linija_podatki.alt_diff>0)?'+':'')+parseInt(linija_podatki.alt_diff)+ 'm</span>';
+		o += '<span class="labled_data"> α '+parseInt(linija_podatki.azimuth)+'</span><span class="enota">°</span></span>';
+	}
+
+	
+	if(gps) {
+		o += '<div id="gps_gps"><span class="line" id="gps_line"><span class="label">GPS&nbsp;</span><span class="labled_data">'+round4(gps.longitude)+'</span><span class="labled_data">'+round4(gps.latitude)+'</span><span class="labled_data">'+round(gps.altitude)+'m</span><span class="labled_data"> ±'+gps.radius+'m</span></span></div>';
+	}
+	if(o) {
+		jQuery("#map_data").html(o);
+		jQuery("#map_data").show("fast");
+	} else
+		jQuery("#map_data").hide("fast");
+	//if(o && rt_data) {
+	if(o) {
+		jQuery('#start_line').click( function() {
+			if( linija_pot ) {
+				indexZ=indexZ+1;
+				follow=false;
+				var ll = linija_podatki.first;
+				pan2( ll, 14 );
+				firstmarker.setZIndexOffset(indexZ);				
+			}
+		});
+		jQuery('#end_line').click( function() {
+			if( linija_pot ) {
+				indexZ=indexZ+1;
+				follow=false;
+				/*var last1 = linija_pot.last();
+				var last = last1.last();
+				var ll = new L.LatLng(last[1], last[0]);*/
+				var ll=linija_podatki.last 
+				pan2( ll, 14 ); 
+				lastmarker.setZIndexOffset(indexZ);
+			}
+		} );
+		jQuery('#near_line').click( function() {
+			if( linija_pot ) {
+				indexZ=indexZ+1;
+				follow=false;
+				var ll = linija_podatki.mid;
+				pan2( ll,14 );
+				midmarker.setZIndexOffset(indexZ);
+
+			}
+		} );
+		
+		jQuery('#gps_line').click( function() {
+				indexZ=indexZ+1;
+				follow=true;
+				var ll = gps.latlon;
+				reset_arrow();
+				pan2( ll,14 );
+				indexZ=indexZ+1;
+				if(marker_arrow){marker_arrow.setZIndexOffset(indexZ);}
+
+		} );
+		
+		jQuery('#angle_line .label').click( function() { jQuery('#start_line').click(); } );
+	}
+}
+
+
+function round5(x) { return Math.round(x*100000)/100000; }
+function round4(x) { return Math.round(x*10000)/10000; }
+function round2(x) { return Math.round(x*100)/100; }
+function round(x) { return Math.round(x); }
+
+/* funkcija za razdalje od tocke do najblizje, zacetne in koncne tocke na liniji 
+** ne dela json!!
+*/
+
+function distanceJSON(gps,linija){
+	if(!gps || !linija) return;
+	var lat,lon,alt;
+	lat=lon=alt=0.0;
+	if(gps.latitude)
+		lat=gps.latitude
+	if(gps.longitude)
+		lon=gps.longitude;
+	if(gps.altitude)
+		alt=gps.altitude;
+
+	linija_podatki.fu = 0;
+	linija_podatki.fd = 0;
+	linija_podatki.lu = 0;
+	linija_podatki.ld = 0;
+	linija_podatki.alt_diff = 0;
+	linija_podatki.first = null;
+	linija_podatki.mid = null;
+	linija_podatki.last = null;
+	linija_podatki.first_dist = null;
+	linija_podatki.mid_dist = null;
+	linija_podatki.last_dist = null;
+	linija_podatki.azimuth = null;
+
+
+	if(linija_pot) {
+		var min = 999999;
+		var mi,mj,d,ll,mll,malt=gps.altitude;
+		
+		mi=mj=-1;
+		
+		jQuery.each(linija_pot, function (i, line) {
+			jQuery.each(line, function (j, point) {
+				ll = new L.LatLng(point[1], point[0]);
+				d = gps.latlon.distanceTo( ll );
+				if( min > d ) {
+					mi = i;
+					mj = j;
+					mll = ll;
+					min = d;
+					malt = point[2];
+				}
+			});			
+		});
+		var fu,fd,lu,ld, f_or_l, lastz,z;
+		fu=fd=lu=ld=0.0;
+		d = gps.altitude - malt;
+		linija_podatki.alt_diff = d;
+		if(d>0) {
+			fu += d;
+			lu += d;
+		} else {
+			fd += -d;
+			ld += -d;
+		}
+		if(mi > -1 && mj > -1) {
+			jQuery.each(linija_pot, function (i, line) {
+				jQuery.each(line, function (j, point) {
+					z = point[2];
+					if(!lastz) {
+						lastz = point[2];
+						return; //continue;
+					}
+					is_l = (i>mi) || (i<=mi && j>mj);
+					d = z-lastz;
+					if(!is_l) {
+						if(d > 0) {
+							fu += d;
+						} else {
+							fd += -d;
+						}
+					} else {
+						if(d > 0) {
+							lu += d;
+						} else {
+							ld += -d;
+						}
+					}
+					lastz=z;
+				});			
+			});
+		}
+		linija_podatki.mid = mll;
+		linija_podatki.first = new L.LatLng(linija_pot[0][0][1], linija_pot[0][0][0]);
+		linija_podatki.fu = fu;
+		linija_podatki.fd = fd;
+		linija_podatki.lu = lu;
+		linija_podatki.ld = ld;
+		
+		var last1 = linija_pot.last();
+		var last = last1.last();
+		linija_podatki.last = new L.LatLng(last[1], last[0]);
+		
+		linija_podatki.mid_dist = linija_podatki.mid.distanceTo(gps.latlon);
+		linija_podatki.first_dist = linija_podatki.mid.distanceTo( linija_podatki.first );
+		linija_podatki.last_dist = linija_podatki.mid.distanceTo( linija_podatki.last );
+		linija_podatki.azimuth=azimuth(gps, linija_podatki.mid);
+		
+		if(linija_podatki.azimuth){
+			if(!marker_arrow){
+				marker_arrow = new L.Marker.Compass(gps.latlon,{iconAngle: linija_podatki.azimuth, icon:arrowIcon}).addTo(map);
+			}
+			marker_arrow.setIconAngle(parseInt(linija_podatki.azimuth));
+			marker_arrow.setLatLng(gps.latlon);
+		}
+		
+		if (!firstmarker){
+			firstmarker= new L.Marker(linija_podatki.first, {icon:fIcon}).addTo(map);
+		}
+		
+		if (!midmarker){
+			midmarker=  new L.Marker(linija_podatki.mid, {icon:mIcon}).addTo(map);
+		}
+		
+		if (!lastmarker){
+			lastmarker= new L.Marker(linija_podatki.last, {icon:lIcon}).addTo(map);
+		}
+		
+		firstmarker.setLatLng(linija_podatki.first);
+		midmarker.setLatLng(linija_podatki.mid);
+		lastmarker.setLatLng(linija_podatki.last);
+		
+		
+	}
+	updateMapData();		
+
+}
+
+function setGPS( coords ) {
+	if(!gps)
+	gps = {}
+	gps.latlon = new L.LatLng(coords.latitude, coords.longitude);
+	gps.latitude = coords.latitude;
+	gps.longitude = coords.longitude;
+	gps.altitude = coords.altitude;
+	gps.radius = coords.accuracy / 2; // nevem zakaj ma tako je v primerih
+}
+
+jQuery(document).ready(function() {
+	jQuery("div#page").hide()
+	var goo = new L.Google();
+	var goo_road = new L.Google('ROADMAP');
+	var goo_hyb = new L.Google('HYBRID');
+   
+	map.addLayer(goo_road);
+	map.addControl(new L.Control.Layers({'ceste':goo_road,'hibrid':goo_hyb})); //'slikovna podlaga':goo,
+
+	watchLocation(function(coords) {
+			setGPS( coords );
+			
+			if(marker) {
+				marker.setLatLng(gps.latlon);
+				
+				if(marker_arrow){marker_arrow.setLatLng(gps.latlon);}
+				if(marker.options.fillColor = "#ff7800") {
+					marker.options.fillColor = "#0000ff";
+					//marker.options.fillOpacity = 0.5;
+				} else {
+					marker.options.fillColor = "#ff7800";
+					//marker.options.fillOpacity = 0.4;
+				}
+			} else {
+				marker=L.circleMarker(gps.latlon, {opacity:0.8}).addTo(map);
+			}
+
+			if(gps.radius < 60000)
+				if(!marker_circle && gps.radius < 60000)
+					marker_circle = L.circle(gps.latlon, gps.radius, {opacity:0.5}).addTo(map);
+				else {
+					marker_circle.setLatLng(gps.latlon);
+					marker_circle.setRadius(gps.radius);
+				}
+			if(follow==true){
+				map.panTo( gps.latlon );
+			}
+			distanceJSON(gps,linija);
+			updateMapData();
+		  }, function() {
+			//document.getElementById('geoloc').innerHTML = 'error';
+		  }
+	);
+
+	jQuery("div#page").tabs().show(); // izdelamo tabse
+	
+	
+	// hack, ob vrnitvi na naš tab se šele premaknemo
+	jQuery('div#page').bind('tabsselect', function(event, ui) {
+		if(ui.index == 0 && where2pan) {
+			//setTimeout(function(){map.panTo( where2pan );},200);
+			//setTimeout(function(){pan2( where2pan, 13 );},200); 
+		}
+		selected_tab = ui.index;        
+	});
+		
+	setLogos();
+	drawPoi();
+	drawJSON();
+ });
+
+</script>
+ </body>
+</html>
+

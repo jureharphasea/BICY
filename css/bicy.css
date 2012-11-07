@@ -1,0 +1,119 @@
+html, body {
+	width:100%; 
+	height:100%; 
+	margin:0; 
+	padding:0;
+	overflow:hidden;
+	background-color: white;
+}
+
+.page_content {
+	height:90%;
+	font-size: 1.2em;
+	background-color: white;
+}
+.pot_data {
+	display: none;
+}
+
+#gps_lens span.line {
+	display: block;
+}
+
+#gps_lens .enota {
+	margin-left: 3px;
+}
+
+#gps_lens .label {
+	width: 2em;
+	float: left;
+}
+
+.item_data:after { content: ", "; } 
+.item_data:last-child:after { content: ""; }
+.item_data {
+	display: block;
+	margin-bottom:2px;
+}
+
+.item:hover
+{ 
+	background-color: #F5F5F5;
+	margin-top:5px;
+}
+
+#gps_gps .labled_data:after { content: ", "; } 
+#gps_gps .labled_data:last-child:after { content: ""; }
+#gps_gps {
+	position: absolute;
+	bottom:2px; 
+	left:3px; 
+}
+
+#gps_pot .labled_data:after { content: ", "; } 
+#gps_pot .labled_data:last-child:after { content: ""; }
+#gps_gps {
+	font-size: 0.8em;
+}
+.selected_item {
+	background-color: #e0e0e0;
+}
+
+#map {
+	width:100%; 
+/*	height:93%;*/ 
+	/*height:53%;*/ 
+	margin:0; 
+	padding:0;
+	font-size: 2em;
+}
+#map_data {
+	width:100%; 
+	max-width:30em;
+	border-radius: 10px;
+	
+	height:5em; 
+	margin:2px; 
+	padding:3px;
+	position: absolute;
+	bottom: 2px;
+	background-color:white;
+	display: none;
+	font-size: 2em;
+	line-height: 1em;
+}
+
+#karta, #poti, #podrobnosti {
+	margin:0; 
+	padding:0;
+}
+#page ul li a{
+	font-size: 1.5em;
+	margin:3px; 
+	padding:0;
+	/*display: none;*/
+}
+
+#page ul li{
+	margin:0; 
+	padding:5;
+	
+}
+
+.lista {
+	padding: 5px;
+	overflow: auto;
+}
+
+ul#linije_list li { cursor:pointer; }
+.line { cursor:pointer; }
+.line:hover { background:yellow;}
+
+/* spremmebe leafleata */
+
+.leaflet-control-layers-expanded {
+    /*background: none repeat scroll 0 0 #FFFFFF;
+    color: #333333;
+    padding: 6px 10px 6px 6px; */
+    font: 20px/1.5 "Helvetica Neue",Arial,Helvetica,sans-serif;
+}
